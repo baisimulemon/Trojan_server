@@ -1,9 +1,15 @@
 {
-    "local_port": 8406,
-    "password": [
-        "password1"
-    ],
-    "cert_name": "",
-    "key_name": "",
-    "key_password": ""
+    "trojan_config": {
+        "local_port": 8406,
+        "password": [
+            "password1",
+            "password2"
+        ],
+        "cert_name": "",
+        "key_name": "",
+        "key_password": ""
+    },
+    "sys_config": {
+        "password": ""
+    }
 }
