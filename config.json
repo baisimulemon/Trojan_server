@@ -1,15 +1,21 @@
 {
+    "nginx_config": {
+        "listen_port": 443
+    },
+
     "trojan_config": {
-        "local_port": 8406,
+        "local_port": 8000,
+        "remote_port": 80,
         "password": [
             "password1",
             "password2"
         ],
-        "cert_name": "",
-        "key_name": "",
-        "key_password": ""
-    },
-    "sys_config": {
-        "password": ""
+        "log_level": 1,
+        "ssl": {
+            "cert": "/etc/trojan/certs/cert.pem",
+            "key": "/etc/trojan/certs/cert.key",
+            "key_password": "",
+            "session_timeout": 600
+        }
     }
 }
