@@ -1,6 +1,6 @@
 FROM nginx:latest
 
-LABEL org.opencontainers.image.authors="lewen"
+LABEL org.opencontainers.image.authors="baisimu"
 LABEL version="1.0"
 
 ENV DEBIAN_FRONTEND=noninteractive
