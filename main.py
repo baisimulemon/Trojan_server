@@ -1,18 +1,19 @@
+import os
 import re
 import glob
 import time
 import json
+import shutil
 import subprocess
 import logging
 from pathlib import Path
-from utils import *
+from utils import ColoredFormatter, GeneratePrivateKey
 
 filepath = Path().resolve()
 cur_path = filepath.cwd().as_posix()
 dockerfiles_path = f'{cur_path}/dockerfiles'
 content_path = f'{dockerfiles_path}/content'
 script_path = f'{cur_path}/script'
-
 
 # 配置根日志记录器
 logger = logging.getLogger()
@@ -43,13 +44,12 @@ class TrojanServer():
         self.container_host_name = 'trojan_server'
         self.image_tag = 'v1'
         self.content_path = content_path
+        self.cert_path = f'{self.content_path}/certs'
         self.script_path = script_path
         self.dockerfiles_path = dockerfiles_path
         self.config = self.load_config(self.config_file)
         #server中的配置
         self.server_config_file = '/etc/trojan/server.json'
-
-        
 
     @staticmethod
     def load_config(config_file):
@@ -111,8 +111,50 @@ class TrojanServer():
                 raise RuntimeError(error_msg)
             return stdout.strip()
         
-            
-    
+    def _ensure_ssl_certs(self):
+        """
+        确保 SSL 证书和密钥被正确配置。从配置文件获取路径，复制到正确的目录，
+        或者在路径不存在时自动生成它们。
+        """
+        ssl_config = self.config.get('trojan_config', {}).get('ssl', {})
+        cert_src_path = ssl_config.get('cert')
+        key_src_path = ssl_config.get('key')
+
+        # 创建 certs 目录，如果它不存在的话
+        os.makedirs(self.cert_path, exist_ok=True)
+
+        if cert_src_path and key_src_path:
+            # 如果路径存在，则复制和重命名证书和密钥
+            self._copy_and_rename_certs(cert_src_path, key_src_path)
+        else:
+            # 如果路径不存在，则生成新的证书和密钥
+            logging.warning('证书或密钥的路径不存在，在指定目录中自动生成。')
+            self._generate_ssl_certs_if_needed()
+
+    def _copy_and_rename_certs(self, cert_src_path, key_src_path):
+        """
+        将给定路径的证书和密钥文件复制到 Docker 内容目录的证书子目录，并重命名它们。
+        """
+        try:
+            shutil.copy(cert_src_path, os.path.join(self.cert_path, 'cert.pem'))
+            shutil.copy(key_src_path, os.path.join(self.cert_path, 'cert.key'))
+            logging.info('证书和密钥已复制和重命名。')
+        except Exception as e:
+            logging.error(f'复制证书和密钥时出现错误: {e}')
+            logging.info('尝试自动生成证书和密钥。')
+            self._generate_ssl_certs_if_needed()
+
+    def _generate_ssl_certs_if_needed(self):
+        """
+        生成 SSL 证书和密钥文件，并将它们保存到 Docker 内容目录的证书子目录。
+        """
+        generator = GeneratePrivateKey()
+        generator.generate_cert_and_key(
+            os.path.join(self.cert_path, 'cert.pem'), 
+            os.path.join(self.cert_path, 'cert.key')
+        )
+
+
     def _grand_script_permission(self):
         """
         提升 script 文件夹内所有 shell 脚本的执行权限。
@@ -189,27 +231,22 @@ class TrojanServer():
         server_json_path = f'{self.content_path}/server.json'
         cmd1 = f'docker cp {self.container_name}:{self.server_config_file} {server_json_path}'
         self.run_cmd(cmd1, show_output=True)
-        
-        # 读取 config.json
-        with open(self.config_file, 'r') as file:
-            config = json.load(file)
 
         # 读取 server.json 的默认配置
-        with open(server_json_path, 'r') as file:
-            server_config = json.load(file)
+        server_config = self.load_config(server_json_path)
 
         # 根据 config.json 更新 server.json
-        trojan_config = config.get('trojan_config', {})
+        trojan_config = self.config.get('trojan_config', {})
         server_config['local_port'] = trojan_config.get('local_port', server_config['local_port'])
         server_config['remote_port'] = trojan_config.get('remote_port', server_config['remote_port'])
         server_config['password'] = trojan_config.get('password', server_config['password'])
         server_config['log_level'] = trojan_config.get('log_level', server_config['log_level'])
+        server_config['ssl']['cert'] = "/etc/trojan/certs/cert.pem"
+        server_config['ssl']['key'] = "/etc/trojan/certs/cert.key"
 
         if 'ssl' in trojan_config:
             # 获取 ssl 配置中的特定参数
             ssl_config = trojan_config['ssl']
-            server_config['ssl']['cert'] = ssl_config.get('cert')
-            server_config['ssl']['key'] = ssl_config.get('key')
             server_config['ssl']['key_password'] = ssl_config.get('key_password')
             server_config['ssl']['session_timeout'] = ssl_config.get('session_timeout')
         
@@ -233,13 +270,10 @@ class TrojanServer():
         """
         nginx_conf_path = f'{self.content_path}/nginx.conf'
         # 读取 config.json
-        with open(self.config_file, 'r') as file:
-            config = json.load(file)
-        
         
         # 读取 config.json 中与nginx配置相关的参数
-        server_listen_port = config["nginx_config"]["listen_port"]
-        upstream_port = config["trojan_config"]["local_port"]
+        server_listen_port = self.config["nginx_config"]["listen_port"]
+        upstream_port = self.config["trojan_config"]["local_port"]
 
         # 读取 nginx.conf 文件
         with open(nginx_conf_path, 'r') as file:
@@ -269,8 +303,9 @@ class TrojanServer():
         #[step1] 提升所有shell脚本的权限
         logging.info('[step1] 提升所有shell脚本的权限...')
         self._grand_script_permission()
-        #[step2] 根据config.json更改容器中nginx的监听端口与转发端口
-        logging.info('[step2] 根据config.json更改容器中nginx的监听端口与转发端口...')
+        #[step2] 准备好构建镜像需要的SSL认证文件与nginx.conf文件
+        logging.info('[step2] 准备好构建镜像需要的SSL认证文件与nginx.conf文件...')
+        self._ensure_ssl_certs()
         self._update_nginx_config()
         #[step3] 创建trojan_server镜像
         logging.info('[step3] 创建trojan_server镜像...')
@@ -279,7 +314,7 @@ class TrojanServer():
         logging.info('[step4] 创建trojan_server容器并启动服务...')
         self._create_trojan_server()
         #[step5] 更新容器中的server.json以及nginx.conf文件
-        logging.info('[step5] 更新容器中的server.json以及nginx.conf文件，重启trojan server...')
+        logging.info('[step5] 更新容器中的server.json文件，重启trojan server...')
         self._update_server_config()
         self._restart_trojan_server()
 

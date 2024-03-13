@@ -12,8 +12,8 @@
         ],
         "log_level": 1,
         "ssl": {
-            "cert": "/etc/trojan/certs/cert.pem",
-            "key": "/etc/trojan/certs/cert.key",
+            "cert": "",
+            "key": "",
             "key_password": "",
             "session_timeout": 600
         }

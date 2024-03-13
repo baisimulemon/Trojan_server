@@ -1,5 +1,13 @@
 import logging
 
+from cryptography import x509
+from cryptography.x509.oid import NameOID
+from cryptography.hazmat.primitives import hashes
+from cryptography.hazmat.backends import default_backend
+from cryptography.hazmat.primitives.asymmetric import rsa
+from cryptography.hazmat.primitives import serialization
+from datetime import datetime, timedelta, timezone
+
 class ColoredFormatter(logging.Formatter):
     """
     一个自定义日志格式器，用于给不同级别的日志添加颜色。
@@ -26,3 +34,81 @@ class ColoredFormatter(logging.Formatter):
         log_fmt = self.FORMATS.get(record.levelno, self.format)
         formatter = logging.Formatter(log_fmt)
         return formatter.format(record)
+    
+class GeneratePrivateKey():
+    """
+    这个类提供了生成自签名证书和私钥的方法。
+    通过generate_cert_and_key方法，可以自动创建自签名的证书和对应的私钥文件。
+    """
+
+    @staticmethod
+    def generate_cert_and_key(cert_path, key_path, valid_time = 10, public_exponent=65537, key_size=2048, name_oid = {
+            "COUNTRY_NAME": u"US",
+            "STATE_OR_PROVINCE_NAME": u"California",
+            "LOCALITY_NAME": u"San Francisco",
+            "ORGANIZATION_NAME": u"My Organization",
+            "COMMON_NAME": u"mydomain.com"
+        }):
+        """
+        自动生成密钥和自签名证书文件，并将它们保存到指定路径。
+
+        参数:
+        - cert_path (str): 证书文件的保存路径。
+        - key_path (str): 私钥文件的保存路径。
+        - valid_time (int): 证书的有效期（天），默认为10天。
+        - public_exponent (int): RSA公钥指数，通常是65537。
+        - key_size (int): RSA密钥的大小，推荐至少2048位。
+        - name_oid (dict): 证书主题的各个字段，包括国家名、省/州名、地名、组织名和通用名。
+        
+        此函数不返回任何值，但会在指定路径生成证书和私钥文件，并记录相关日志信息。
+        """
+        logging.info('自动生成密钥与证书文件')
+        # Generate private key
+        private_key = rsa.generate_private_key(
+            public_exponent=public_exponent,
+            key_size=key_size,
+            backend=default_backend()
+        )
+        
+        # Generate a self-signed certificate
+        subject = issuer = x509.Name([
+            x509.NameAttribute(NameOID.COUNTRY_NAME, name_oid["COUNTRY_NAME"]),
+            x509.NameAttribute(NameOID.STATE_OR_PROVINCE_NAME, name_oid["STATE_OR_PROVINCE_NAME"]),
+            x509.NameAttribute(NameOID.LOCALITY_NAME, name_oid["LOCALITY_NAME"]),
+            x509.NameAttribute(NameOID.ORGANIZATION_NAME, name_oid["ORGANIZATION_NAME"]),
+            x509.NameAttribute(NameOID.COMMON_NAME, name_oid["COMMON_NAME"]),
+        ])
+        
+        start_date  = datetime.now(timezone.utc) - timedelta(days=1)
+        end_date  = datetime.now(timezone.utc) + timedelta(days=valid_time)
+        
+        certificate = x509.CertificateBuilder().subject_name(
+            subject
+        ).issuer_name(
+            issuer
+        ).public_key(
+            private_key.public_key()
+        ).serial_number(
+            x509.random_serial_number()
+        ).not_valid_before(
+            start_date
+        ).not_valid_after(
+            end_date 
+        ).add_extension(
+            x509.SubjectAlternativeName([x509.DNSName(u"localhost")]),
+            critical=False,
+            # Sign our certificate with our private key
+        ).sign(private_key, hashes.SHA256(), default_backend())
+        
+        # Write our certificate out to disk.
+        with open(cert_path, "wb") as f:
+            f.write(certificate.public_bytes(serialization.Encoding.PEM))
+        
+        # Write our private key out to disk.
+        with open(key_path, "wb") as f:
+            f.write(private_key.private_bytes(
+                encoding=serialization.Encoding.PEM,
+                format=serialization.PrivateFormat.TraditionalOpenSSL,
+                encryption_algorithm=serialization.NoEncryption()
+            ))
+        logging.info(f"证书生成于 {cert_path}，密钥生成于 {key_path}。")
