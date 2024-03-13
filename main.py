@@ -1,8 +1,9 @@
 import re
 import glob
 import time
-import subprocess
 import json
+import subprocess
+import logging
 from pathlib import Path
 
 filepath = Path().resolve()
@@ -10,6 +11,8 @@ cur_path = filepath.cwd().as_posix()
 dockerfiles_path = f'{cur_path}/dockerfiles'
 content_path = f'{dockerfiles_path}/content'
 script_path = f'{cur_path}/script'
+
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 
 class TrojanServer():
     """
@@ -78,6 +81,7 @@ class TrojanServer():
         try:
             p.wait(timeout)
         except subprocess.TimeoutExpired:
+            logging.warning('命令执行超时...')
             p.kill()
             raise
         time_end = time.time()
@@ -92,6 +96,8 @@ class TrojanServer():
                     RUN TIME    : {time_end - time_start}
                     DETAIL      : {p.stderr.read()}
                 """
+                logging.warning('命令执行出错...')
+                logging.error(f'error_msg')
                 raise RuntimeError(error_msg)
             return stdout.strip()
         
@@ -103,6 +109,7 @@ class TrojanServer():
         通过对文件夹内的每个 .sh 文件执行 'chmod +x' 命令来实现。
         """
         sh_script = glob.glob(f'{script_path}/*.sh')
+        logging.info(f'{sh_script} 将会提升可执行权限...')
         for script in sh_script:
             self.run_cmd(f'chmod +x {script}')
     
@@ -112,8 +119,10 @@ class TrojanServer():
         使用 Dockerfile 和相关的配置文件创建 Trojan 服务器的 Docker 镜像。
         """
         self._remove_trojan_server()
+        logging.info(f'开始建立trojan server镜像...')
         cmd = f'docker build -f {self.docker_file} -t {self.image_name}:{self.image_tag} {self.content_path}'
         self.run_cmd(cmd, timeout = None, working_dir=self.dockerfiles_path, show_output=True)
+        logging.info(f'trojan server镜像建立完毕...')
     
     def _remove_docker_image(self):
         """
@@ -121,8 +130,10 @@ class TrojanServer():
         使用 'docker image rm' 命令来移除指定的 Trojan 服务器 Docker 镜像。
         """
         self._remove_trojan_server()
+        logging.info(f'开始移除trojan server镜像...')
         cmd = f'docker image rm {self.image_name}:{self.image_tag}'
         self.run_cmd(cmd, show_output=True)
+        logging.info(f'trojan server镜像移除完毕...')
 
     def _create_trojan_server(self):
         """
@@ -130,27 +141,33 @@ class TrojanServer():
         使用 'docker run' 命令来基于已构建的镜像启动容器，并设置必要的网络和卷挂载选项。
         """
         self._remove_trojan_server
+        logging.info(f'开始启动trojan server容器...')
         cmd = f'docker run -dit --privileged --init --net=bridge \
                 -v /etc/localtime:/etc/localtime:ro -v /etc/timezone:/etc/timezone:ro \
                 --name={self.container_name} --hostname={self.container_host_name} \
                 {self.image_name}:{self.image_tag}'
         self.run_cmd(cmd, show_output=True)
+        logging.info(f'trojan server容器已启动...')
     
     def _remove_trojan_server(self):
         """
         停止并移除已有的 Trojan 服务器容器。
         使用 'docker rm -f' 命令来强制移除指定的容器，确保启动新容器前旧容器不会产生冲突。
         """
+        logging.info(f'开始移除trojan server容器...')
         cmd = f'docker rm -f {self.container_name}'
         self.run_cmd(cmd, show_output=True)
+        logging.info(f'trojan server容器已移除...')
     
     def _restart_trojan_server(self):
         """
         重启 Trojan 服务器的 Docker 容器。
         使用 'docker restart' 命令来重启指定的容器，使配置更改生效。
         """
+        logging.info(f'重启trojan server容器...')
         cmd = f'docker restart {self.container_name}'
         self.run_cmd(cmd, show_output=True)
+        logging.info(f'trojan server容器重启完毕...')
     
     def _update_server_config(self):
         """
@@ -240,14 +257,19 @@ class TrojanServer():
         包括 Nginx 和 Trojan 服务的配置更新，以及必要时重启容器以应用配置更改。
         """
         #[step1] 提升所有shell脚本的权限
+        logging.info('[step1] 提升所有shell脚本的权限...')
         self._grand_script_permission()
         #[step2] 根据config.json更改容器中nginx的监听端口与转发端口
+        logging.info('[step2] 根据config.json更改容器中nginx的监听端口与转发端口...')
         self._update_nginx_config()
         #[step3] 创建trojan_server镜像
+        logging.info('[step3] 创建trojan_server镜像...')
         self._build_docker_image()
         #[step4] 创建trojan_server容器并启动服务
+        logging.info('[step4] 创建trojan_server容器并启动服务...')
         self._create_trojan_server()
         #[step5] 更新容器中的server.json以及nginx.conf文件
+        logging.info('[step5] 更新容器中的server.json以及nginx.conf文件，重启trojan server...')
         self._update_server_config()
         self._restart_trojan_server()
     
