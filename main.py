@@ -194,7 +194,8 @@ class TrojanServer():
         """
         self._remove_trojan_server
         logging.info(f'开始启动trojan server容器...')
-        cmd = f'docker run -dit --privileged --init --net=bridge \
+        map_port = self.config['nginx_config']['listen_port']
+        cmd = f'docker run -dit --privileged --init --net=bridge -p {map_port}:{map_port}\
                 -v /etc/localtime:/etc/localtime:ro -v /etc/timezone:/etc/timezone:ro \
                 --name={self.container_name} --hostname={self.container_host_name} \
                 {self.image_name}:{self.image_tag}'
