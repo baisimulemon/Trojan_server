@@ -5,6 +5,7 @@ import json
 import subprocess
 import logging
 from pathlib import Path
+from utils import *
 
 filepath = Path().resolve()
 cur_path = filepath.cwd().as_posix()
@@ -12,7 +13,16 @@ dockerfiles_path = f'{cur_path}/dockerfiles'
 content_path = f'{dockerfiles_path}/content'
 script_path = f'{cur_path}/script'
 
-logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
+
+# 配置根日志记录器
+logger = logging.getLogger()
+# 设置默认的日志级别
+logger.setLevel(logging.INFO)  
+# 创建一个 console 处理器并使用彩色格式化器
+console_handler = logging.StreamHandler()
+console_handler.setFormatter(ColoredFormatter())
+# 添加处理器到日志记录器
+logger.addHandler(console_handler)
 
 class TrojanServer():
     """
@@ -272,8 +282,6 @@ class TrojanServer():
         logging.info('[step5] 更新容器中的server.json以及nginx.conf文件，重启trojan server...')
         self._update_server_config()
         self._restart_trojan_server()
-    
-
 
 if __name__ == "__main__":
     trojan_server = TrojanServer()
