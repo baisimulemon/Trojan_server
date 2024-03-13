@@ -13,9 +13,15 @@ script_path = f'{cur_path}/script'
 
 class TrojanServer():
     """
+    TrojanServer 类用于自动构建、配置和管理 Trojan 服务器的 Docker 容器。
+    它封装了从读取配置文件、创建 Docker 镜像、启动容器到配置 Nginx 和 Trojan 服务的一系列操作。
     """
     
     def __init__(self):
+        """
+        初始化 TrojanServer 实例。
+        设置 Docker 镜像和容器的基本信息，读取配置文件，并定义了服务所需的配置文件路径。
+        """
         #HOST上的配置
         self.docker_file = f'{dockerfiles_path}/Dockerfile.trojan_server'
         self.config_file = f'{cur_path}/config.json'
@@ -35,8 +41,13 @@ class TrojanServer():
     @staticmethod
     def load_config(config_file):
         """
-        加载config.json文件中的配置。
-        Load config.json.
+        静态方法，用于从指定的 JSON 配置文件中加载配置。
+        
+        参数:
+        - config_file (str): 配置文件的路径。
+        
+        返回:
+        - dict: 配置文件中的内容。
         """
         with open(config_file, 'r') as file:
             return json.load(file)
@@ -44,25 +55,19 @@ class TrojanServer():
     @staticmethod
     def run_cmd(cmd: str, timeout = 20, working_dir = None, show_output = False):
         """
-        执行给定的命令并处理其输出。
-
-        这个方法使用 subprocess.Popen 来异步执行一个 shell 命令，并根据需要捕获或直接显示其输出。这对于执行外部程序或脚本特别有用。
-
+        执行指定的 shell 命令，并根据参数决定是否捕获或直接显示输出。
+        
         参数:
-        cmd (str): 需要执行的命令字符串。
-        timeout (int, 可选): 命令执行的超时时间（秒）。默认为 20 秒。
-        working_dir (str, 可选): 设置命令执行时的工作目录。如果未指定，默认为当前 Python 脚本的工作目录。
-        show_output (bool, 可选): 是否直接在终端中显示命令的输出。默认为 False，即捕获输出并在执行失败时抛出异常。
-
+        - cmd (str): 要执行的命令。
+        - timeout (int): 命令执行的超时时间（秒）。默认为 20 秒。
+        - working_dir (str): 命令的工作目录。如果未指定，则使用当前目录。
+        - show_output (bool): 是否在终端直接显示命令的输出。默认为 False，即捕获输出。
+        
         返回:
-        str: 如果 show_output 为 False 且命令执行成功，返回命令的标准输出。否则不返回任何内容。
-
+        - str: 如果 show_output 为 False，则返回命令的标准输出。否则返回 None。
+        
         异常:
-        RuntimeError: 如果命令执行失败（即返回码不为 0），则抛出包含错误详情的异常。
-
-        注意:
-        - 当 show_output 为 True 时，命令的输出和错误将直接打印到终端，不会返回输出内容。
-        - 若命令执行时间超过 timeout 指定的秒数，则会尝试终止命令并抛出 TimeoutExpired 异常。
+        - RuntimeError: 如果命令执行失败，抛出异常。
         """
         if show_output:
             p = subprocess.Popen(cmd, shell=True, cwd=working_dir)
@@ -94,24 +99,36 @@ class TrojanServer():
     
     def _grand_script_permission(self):
         """
-        提升所有script文件中的shell脚本的权限。
-        Grand all shell script with execute permission.
+        提升 script 文件夹内所有 shell 脚本的执行权限。
+        通过对文件夹内的每个 .sh 文件执行 'chmod +x' 命令来实现。
         """
         sh_script = glob.glob(f'{script_path}/*.sh')
         for script in sh_script:
             self.run_cmd(f'chmod +x {script}')
     
     def _build_docker_image(self):
+        """
+        构建 Docker 镜像。
+        使用 Dockerfile 和相关的配置文件创建 Trojan 服务器的 Docker 镜像。
+        """
         self._remove_trojan_server()
         cmd = f'docker build -f {self.docker_file} -t {self.image_name}:{self.image_tag} {self.content_path}'
         self.run_cmd(cmd, timeout = None, working_dir=self.dockerfiles_path, show_output=True)
     
     def _remove_docker_image(self):
+        """
+        删除已有的 Docker 镜像。
+        使用 'docker image rm' 命令来移除指定的 Trojan 服务器 Docker 镜像。
+        """
         self._remove_trojan_server()
         cmd = f'docker image rm {self.image_name}:{self.image_tag}'
         self.run_cmd(cmd, show_output=True)
 
     def _create_trojan_server(self):
+        """
+        创建并启动 Trojan 服务器的 Docker 容器。
+        使用 'docker run' 命令来基于已构建的镜像启动容器，并设置必要的网络和卷挂载选项。
+        """
         self._remove_trojan_server
         cmd = f'docker run -dit --privileged --init --net=bridge \
                 -v /etc/localtime:/etc/localtime:ro -v /etc/timezone:/etc/timezone:ro \
@@ -120,14 +137,27 @@ class TrojanServer():
         self.run_cmd(cmd, show_output=True)
     
     def _remove_trojan_server(self):
+        """
+        停止并移除已有的 Trojan 服务器容器。
+        使用 'docker rm -f' 命令来强制移除指定的容器，确保启动新容器前旧容器不会产生冲突。
+        """
         cmd = f'docker rm -f {self.container_name}'
         self.run_cmd(cmd, show_output=True)
     
     def _restart_trojan_server(self):
+        """
+        重启 Trojan 服务器的 Docker 容器。
+        使用 'docker restart' 命令来重启指定的容器，使配置更改生效。
+        """
         cmd = f'docker restart {self.container_name}'
         self.run_cmd(cmd, show_output=True)
     
     def _update_server_config(self):
+        """
+        从 config.json 更新并应用配置到容器中的 server.json 文件。
+        首先将容器中的 server.json 文件复制到宿主机进行修改，然后再复制回容器内。
+        通过读取 config.json 中的配置，更新 server.json 中的特定字段，包括端口、密码等信息。
+        """
         # 从容器中取出 server.json 
         server_json_path = f'{self.content_path}/server.json'
         cmd1 = f'docker cp {self.container_name}:{self.server_config_file} {server_json_path}'
@@ -169,6 +199,11 @@ class TrojanServer():
         self.run_cmd(cmd3, show_output=True)
 
     def _update_nginx_config(self):
+        """
+        根据 config.json 中的配置更新 nginx 配置文件。
+        读取 config.json 中的 nginx 相关配置，并更新宿主机上的 nginx.conf 文件中的监听端口和上游服务器端口。
+        使用正则表达式来查找并替换配置文件中的相关端口设置。
+        """
         nginx_conf_path = f'{self.content_path}/nginx.conf'
         # 读取 config.json
         with open(self.config_file, 'r') as file:
@@ -200,8 +235,9 @@ class TrojanServer():
 
     def auto_build_trojan_server(self):
         """
-        自动建立trojan服务器虚拟容器并开启服务。
-        Auto build up trojan server docker container and initiate service.
+        自动化流程以构建、配置和启动 Trojan 服务器容器。
+        此方法依次执行权限提升、配置更新、Docker 镜像构建、容器创建与启动，并应用最终的服务配置。
+        包括 Nginx 和 Trojan 服务的配置更新，以及必要时重启容器以应用配置更改。
         """
         #[step1] 提升所有shell脚本的权限
         self._grand_script_permission()
