@@ -300,23 +300,27 @@ class TrojanServer():
         此方法依次执行权限提升、配置更新、Docker 镜像构建、容器创建与启动，并应用最终的服务配置。
         包括 Nginx 和 Trojan 服务的配置更新，以及必要时重启容器以应用配置更改。
         """
-        #[step1] 提升所有shell脚本的权限
-        logging.info('[step1] 提升所有shell脚本的权限...')
-        self._grand_script_permission()
-        #[step2] 准备好构建镜像需要的SSL认证文件与nginx.conf文件
-        logging.info('[step2] 准备好构建镜像需要的SSL认证文件与nginx.conf文件...')
-        self._ensure_ssl_certs()
-        self._update_nginx_config()
-        #[step3] 创建trojan_server镜像
-        logging.info('[step3] 创建trojan_server镜像...')
-        self._build_docker_image()
-        #[step4] 创建trojan_server容器并启动服务
-        logging.info('[step4] 创建trojan_server容器并启动服务...')
-        self._create_trojan_server()
-        #[step5] 更新容器中的server.json以及nginx.conf文件
-        logging.info('[step5] 更新容器中的server.json文件，重启trojan server...')
-        self._update_server_config()
-        self._restart_trojan_server()
+        logging.info("开始自动构建 Trojan 服务器...")
+        try:
+            #[step1] 提升所有shell脚本的权限
+            logging.info('[step1] 提升所有shell脚本的权限...')
+            self._grand_script_permission()
+            #[step2] 准备好构建镜像需要的SSL认证文件与nginx.conf文件
+            logging.info('[step2] 准备好构建镜像需要的SSL认证文件与nginx.conf文件...')
+            self._ensure_ssl_certs()
+            self._update_nginx_config()
+            #[step3] 创建trojan_server镜像
+            logging.info('[step3] 创建trojan_server镜像...')
+            self._build_docker_image()
+            #[step4] 创建trojan_server容器并启动服务
+            logging.info('[step4] 创建trojan_server容器并启动服务...')
+            self._create_trojan_server()
+            #[step5] 更新容器中的server.json以及nginx.conf文件
+            logging.info('[step5] 更新容器中的server.json文件，重启trojan server...')
+            self._update_server_config()
+            self._restart_trojan_server()
+        except Exception as e:
+            logging.error(f"自动构建 Trojan 服务器过程中出现错误: {e}")
 
 if __name__ == "__main__":
     trojan_server = TrojanServer()
