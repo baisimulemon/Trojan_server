@@ -154,7 +154,6 @@ class TrojanServer():
             os.path.join(self.cert_path, 'cert.key')
         )
 
-
     def _grand_script_permission(self):
         """
         提升 script 文件夹内所有 shell 脚本的执行权限。
@@ -323,8 +322,112 @@ class TrojanServer():
         except Exception as e:
             logging.error(f"自动构建 Trojan 服务器过程中出现错误: {e}")
 
+class DockerSetup():
+    def __init__(self):
+        self.config_file = f'{cur_path}/config.json'
+        self.config = self._load_config(self.config_file)
+        self.host_config = self.config.get("host_config", {})
+        self.user = self.host_config.get("user")
+        self.password = self.host_config.get("password")
+
+    @staticmethod
+    def _load_config(config_path):
+        with open(config_path, 'r') as file:
+            return json.load(file)
+
+    def verify_password(self):
+        if self.user == 'root':
+            logging.warning("不建议使用 root 用户执行，请切换为普通用户后重试")
+            return False
+
+        if self.password:
+            return self._check_password(self.password)
+
+        # 如果密码不存在，提示用户输入
+        return self._prompt_for_password()
+
+    def _check_password(self, password):
+        result = subprocess.run(['sudo', '-k', '-S', 'ls'], input=password.encode(), capture_output=True)
+        if result.returncode == 0:
+            logging.info("密码验证成功")
+            return True
+        else:
+            logging.warning("密码错误，请重新输入")
+            return False
+
+    def _prompt_for_password(self):
+        try:
+            self.password = input("请输入 {} 的密码: ".format(self.user))
+            return self._check_password(self.password)
+        except TimeoutError:
+            logging.warning("输入超时, 请重试")
+            return False
+
+    def check_and_install_docker(self):
+        logging.info("检查 docker 是否已安装 ...")
+        docker_installed = self._check_docker_installed()
+
+        if not docker_installed:
+            self._install_docker()
+
+    def _check_docker_installed(self):
+        result = subprocess.run(['docker', 'version'], capture_output=True)
+        if 'Client:' in result.stdout.decode() and 'Server:' in result.stdout.decode():
+            logging.info("Docker 已正确安装")
+            return True
+        else:
+            logging.warning("未正确安装或未安装 Docker，将尝试重新安装")
+            return False
+
+    def _install_docker(self):
+        logging.info("安装依赖: apt-transport-https、ca-certificates、curl、gnupg2、software-properties-common")
+        dependencies = [
+            'apt-transport-https',
+            'ca-certificates',
+            'curl',
+            'gnupg2',
+            'software-properties-common'
+        ]
+        subprocess.run(['sudo', '-S', 'apt-get', 'install', '-y'] + dependencies, input=self.password.encode())
+
+        logging.info("配置信任Docker的GPG公钥")
+        subprocess.run(
+            ['curl', '-fsSL', 'https://download.docker.com/linux/ubuntu/gpg', '|', 'sudo', 'apt-key', 'add', '-'],
+            input=self.password.encode()
+        )
+
+        logging.info("增加Docker官方APT源")
+        subprocess.run(
+            ['sudo', 'add-apt-repository', "deb [arch=amd64] https://download.docker.com/linux/ubuntu $(lsb_release -cs) stable"],
+            input=self.password.encode()
+        )
+
+        logging.info("更新APT包索引")
+        subprocess.run(['sudo', 'apt-get', 'update', '-y'], input=self.password.encode())
+
+        logging.info("安装 docker-ce")
+        subprocess.run(['sudo', 'apt-get', 'install', '-y', 'docker-ce'], input=self.password.encode())
+
+        logging.info("Docker 安装完成")
+    
+    def auto_check_and_install_docker(self):
+        try:
+            if self.verify_password():
+                self.check_and_install_docker()
+            else:
+                logging.error("用户密码验证失败。")
+                raise ValueError("用户密码验证失败。")
+        except Exception as e:
+            logging.error(f"检查或安装Docker过程中发生错误：{e}")
+            raise
+            
+    
 if __name__ == "__main__":
+    docker_setup = DockerSetup()
+    docker_setup.auto_check_and_install_docker()
+    del docker_setup
     trojan_server = TrojanServer()
     trojan_server.auto_build_trojan_server()
+    del trojan_server
 
 

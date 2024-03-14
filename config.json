@@ -1,4 +1,8 @@
 {
+    "host_config": {
+        "user":"",
+        "password":""
+    },
     "nginx_config": {
         "listen_port": 443
     },
