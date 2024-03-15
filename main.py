@@ -7,7 +7,7 @@ import shutil
 import subprocess
 import logging
 from pathlib import Path
-from utils import ColoredFormatter, GeneratePrivateKey
+from utils import ColoredFormatter, GeneratePrivateKey, run_cmd
 
 filepath = Path().resolve()
 cur_path = filepath.cwd().as_posix()
@@ -50,6 +50,8 @@ class TrojanServer():
         self.config = self.load_config(self.config_file)
         #server中的配置
         self.server_config_file = '/etc/trojan/server.json'
+        #工具类函数
+        self.run_cmd = run_cmd
 
     @staticmethod
     def load_config(config_file):
@@ -65,51 +67,51 @@ class TrojanServer():
         with open(config_file, 'r') as file:
             return json.load(file)
     
-    @staticmethod
-    def run_cmd(cmd: str, timeout = 20, working_dir = None, show_output = False):
-        """
-        执行指定的 shell 命令，并根据参数决定是否捕获或直接显示输出。
+    # @staticmethod
+    # def run_cmd(cmd: str, timeout = 20, working_dir = None, show_output = False):
+    #     """
+    #     执行指定的 shell 命令，并根据参数决定是否捕获或直接显示输出。
         
-        参数:
-        - cmd (str): 要执行的命令。
-        - timeout (int): 命令执行的超时时间（秒）。默认为 20 秒。
-        - working_dir (str): 命令的工作目录。如果未指定，则使用当前目录。
-        - show_output (bool): 是否在终端直接显示命令的输出。默认为 False，即捕获输出。
+    #     参数:
+    #     - cmd (str): 要执行的命令。
+    #     - timeout (int): 命令执行的超时时间（秒）。默认为 20 秒。
+    #     - working_dir (str): 命令的工作目录。如果未指定，则使用当前目录。
+    #     - show_output (bool): 是否在终端直接显示命令的输出。默认为 False，即捕获输出。
         
-        返回:
-        - str: 如果 show_output 为 False，则返回命令的标准输出。否则返回 None。
+    #     返回:
+    #     - str: 如果 show_output 为 False，则返回命令的标准输出。否则返回 None。
         
-        异常:
-        - RuntimeError: 如果命令执行失败，抛出异常。
-        """
-        if show_output:
-            p = subprocess.Popen(cmd, shell=True, cwd=working_dir)
-        else:
-            p = subprocess.Popen(cmd, shell=True, stdout=subprocess.PIPE,
-                            stderr=subprocess.PIPE, encoding='utf-8', cwd=working_dir)
-        time_start = time.time()
-        try:
-            p.wait(timeout)
-        except subprocess.TimeoutExpired:
-            logging.warning('命令执行超时...')
-            p.kill()
-            raise
-        time_end = time.time()
+    #     异常:
+    #     - RuntimeError: 如果命令执行失败，抛出异常。
+    #     """
+    #     if show_output:
+    #         p = subprocess.Popen(cmd, shell=True, cwd=working_dir)
+    #     else:
+    #         p = subprocess.Popen(cmd, shell=True, stdout=subprocess.PIPE,
+    #                         stderr=subprocess.PIPE, encoding='utf-8', cwd=working_dir)
+    #     time_start = time.time()
+    #     try:
+    #         p.wait(timeout)
+    #     except subprocess.TimeoutExpired:
+    #         logging.warning('命令执行超时...')
+    #         p.kill()
+    #         raise
+    #     time_end = time.time()
 
-        if not show_output:
-            stdout, stderr = p.communicate()
-            return_code = p.returncode
-            if return_code != 0:
-                error_msg = f"""
-                    RETURN CODE : {return_code}
-                    COMMAND     : {cmd}
-                    RUN TIME    : {time_end - time_start}
-                    DETAIL      : {p.stderr.read()}
-                """
-                logging.warning('命令执行出错...')
-                logging.error(f'error_msg')
-                raise RuntimeError(error_msg)
-            return stdout.strip()
+    #     if not show_output:
+    #         stdout, stderr = p.communicate()
+    #         return_code = p.returncode
+    #         if return_code != 0:
+    #             error_msg = f"""
+    #                 RETURN CODE : {return_code}
+    #                 COMMAND     : {cmd}
+    #                 RUN TIME    : {time_end - time_start}
+    #                 DETAIL      : {p.stderr.read()}
+    #             """
+    #             logging.warning('命令执行出错...')
+    #             logging.error(f'error_msg')
+    #             raise RuntimeError(error_msg)
+    #         return stdout.strip()
         
     def _ensure_ssl_certs(self):
         """
@@ -329,6 +331,7 @@ class DockerSetup():
         self.host_config = self.config.get("host_config", {})
         self.user = self.host_config.get("user")
         self.password = self.host_config.get("password")
+        self.run_cmd = run_cmd
 
     @staticmethod
     def _load_config(config_path):
@@ -347,12 +350,13 @@ class DockerSetup():
         return self._prompt_for_password()
 
     def _check_password(self, password):
-        result = subprocess.run(['sudo', '-k', '-S', 'ls'], input=password.encode(), capture_output=True)
-        if result.returncode == 0:
+        cmd = 'sudo -k -S ls'
+        try:
+            self.run_cmd(cmd, input=password, show_output=False)
             logging.info("密码验证成功")
             return True
-        else:
-            logging.warning("密码错误，请重新输入")
+        except RuntimeError as e:
+            logging.error(f"密码验证失败: {e}")
             return False
 
     def _prompt_for_password(self):
@@ -375,42 +379,38 @@ class DockerSetup():
             logging.warning('Docker 不在系统路径中，需要安装。')
             return False
         
-        result = subprocess.run(['docker', 'version'], capture_output=True)
-        if 'Client:' in result.stdout.decode() and 'Server:' in result.stdout.decode():
-            logging.info("Docker 已正确安装")
-            return True
-        else:
-            logging.warning("未正确安装或未安装 Docker，将尝试重新安装")
+        try:
+            result = self.run_cmd('docker version', show_output=False)
+            if 'Client:' in result and 'Server:' in result:
+                logging.info("Docker 已正确安装")
+                return True
+            else:
+                logging.warning("未正确安装或未安装 Docker，将尝试重新安装")
+                return False
+        except RuntimeError as e:
+            logging.error(f"检查 Docker 版本时出错: {e}")
             return False
 
     def _install_docker(self):
         logging.info("安装依赖: apt-transport-https、ca-certificates、curl、gnupg2、software-properties-common")
-        dependencies = [
-            'apt-transport-https',
-            'ca-certificates',
-            'curl',
-            'gnupg2',
-            'software-properties-common'
-        ]
-        subprocess.run(['sudo', '-S', 'apt-get', 'install', '-y'] + dependencies, input=self.password.encode())
+        dependencies = 'apt-transport-https ca-certificates curl gnupg2 software-properties-common'
+        self.run_cmd(f'echo {self.password} | sudo -S apt-get install -y {dependencies}', show_output=True)
 
         logging.info("配置信任Docker的GPG公钥")
-        subprocess.run(
-            ['curl', '-fsSL', 'https://download.docker.com/linux/ubuntu/gpg', '|', 'sudo', 'apt-key', 'add', '-'],
-            input=self.password.encode()
-        )
+        self.run_cmd(f'echo {self.password} | sudo -S curl -fsSL https://download.docker.com/linux/ubuntu/gpg | sudo apt-key add -', show_output=True)
 
         logging.info("增加Docker官方APT源")
-        subprocess.run(
-            ['sudo', 'add-apt-repository', "deb [arch=amd64] https://download.docker.com/linux/ubuntu $(lsb_release -cs) stable"],
-            input=self.password.encode()
+        add_apt_repository_command = (
+            f"echo {self.password} | sudo -S add-apt-repository "
+            f"\"deb [arch=amd64] https://download.docker.com/linux/ubuntu $(lsb_release -cs) stable\""
         )
+        self.run_cmd(add_apt_repository_command, show_output=True)
 
         logging.info("更新APT包索引")
-        subprocess.run(['sudo', 'apt-get', 'update', '-y'], input=self.password.encode())
+        self.run_cmd(f'echo {self.password} | sudo -S apt-get update -y', show_output=True)
 
         logging.info("安装 docker-ce")
-        subprocess.run(['sudo', 'apt-get', 'install', '-y', 'docker-ce'], input=self.password.encode())
+        self.run_cmd(f'echo {self.password} | sudo -S apt-get install -y docker-ce', show_output=True)
 
         logging.info("Docker 安装完成")
     
