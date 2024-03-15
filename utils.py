@@ -131,16 +131,21 @@ def run_cmd(cmd, timeout=20, working_dir=None, show_output=False, input=None):
     异常:
     - RuntimeError: 如果命令执行失败，抛出异常。
     """
-    process = subprocess.Popen(cmd, shell=True, cwd=working_dir, 
-                               stdin=subprocess.PIPE, stdout=subprocess.PIPE, 
-                               stderr=subprocess.PIPE, encoding='utf-8')
+    if show_output:
+        # 当需要显示输出时，不重定向 stdout 和 stderr
+        process = subprocess.Popen(cmd, shell=True, cwd=working_dir,
+                                   stdin=subprocess.PIPE, encoding='utf-8')
+    else:
+        process = subprocess.Popen(cmd, shell=True, cwd=working_dir,
+                                   stdin=subprocess.PIPE, stdout=subprocess.PIPE,
+                                   stderr=subprocess.PIPE, encoding='utf-8')
     try:
         stdout, stderr = process.communicate(input=input, timeout=timeout)
     except subprocess.TimeoutExpired:
         process.kill()
         raise RuntimeError("命令执行超时")
 
-    if process.returncode != 0:
-        raise RuntimeError(stderr.strip() or "命令执行出错，但没有提供错误输出。")
-
-    return stdout.strip() if not show_output else None
+    if not show_output:
+        if process.returncode != 0:
+            raise RuntimeError(stderr.strip() or "命令执行出错，但没有提供错误输出。")
+        return stdout.strip()
