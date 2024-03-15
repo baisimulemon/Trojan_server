@@ -423,7 +423,10 @@ class DockerSetup():
         
         # 检查当前用户是否属于 docker 组
         check_group_cmd = f'getent group docker | grep "\\b{self.user}\\b"'
-        result = self.run_cmd(check_group_cmd, show_output=False)
+        try:
+            result = self.run_cmd(check_group_cmd, show_output=False)
+        except RuntimeError as e:
+            logging.error(f"检查用户是否在 docker 组中时发生错误：{e}")
         
         # 如果用户不在 docker 组中，将其添加到该组
         if not result:
