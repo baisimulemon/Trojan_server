@@ -145,7 +145,13 @@ def run_cmd(cmd, timeout=20, working_dir=None, show_output=False, input=None):
         process.kill()
         raise RuntimeError("命令执行超时")
 
-    if not show_output:
-        if process.returncode != 0:
-            raise RuntimeError(stderr.strip() or "命令执行出错，但没有提供错误输出。")
-        return stdout.strip()
+    # 在不需要显示输出的情况下，对于执行失败但没有stderr输出的命令，提供默认错误消息
+    if not show_output and process.returncode != 0:
+        error_msg = stderr.strip()
+        if error_msg:
+            raise RuntimeError(error_msg)
+        else:
+            return error_msg
+
+    # 对于需要显示输出或执行成功的命令，返回stdout
+    return stdout.strip() if not show_output else None
