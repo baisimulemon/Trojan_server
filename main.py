@@ -371,6 +371,10 @@ class DockerSetup():
             self._install_docker()
 
     def _check_docker_installed(self):
+        if shutil.which('docker') is None:
+            logging.warning('Docker 不在系统路径中，需要安装。')
+            return False
+        
         result = subprocess.run(['docker', 'version'], capture_output=True)
         if 'Client:' in result.stdout.decode() and 'Server:' in result.stdout.decode():
             logging.info("Docker 已正确安装")
