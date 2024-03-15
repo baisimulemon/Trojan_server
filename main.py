@@ -3,7 +3,6 @@ import re
 import glob
 import json
 import shutil
-import subprocess
 import logging
 from pathlib import Path
 from utils import ColoredFormatter, GeneratePrivateKey, run_cmd
@@ -49,6 +48,8 @@ class TrojanServer():
         self.config = self.load_config(self.config_file)
         #server中的配置
         self.server_config_file = '/etc/trojan/server.json'
+        #宿主机配置
+        self.host_password = self.config.get("host_config", {}).get("password")
         #工具类函数
         self.run_cmd = run_cmd
 
@@ -65,53 +66,7 @@ class TrojanServer():
         """
         with open(config_file, 'r') as file:
             return json.load(file)
-    
-    # @staticmethod
-    # def run_cmd(cmd: str, timeout = 20, working_dir = None, show_output = False):
-    #     """
-    #     执行指定的 shell 命令，并根据参数决定是否捕获或直接显示输出。
-        
-    #     参数:
-    #     - cmd (str): 要执行的命令。
-    #     - timeout (int): 命令执行的超时时间（秒）。默认为 20 秒。
-    #     - working_dir (str): 命令的工作目录。如果未指定，则使用当前目录。
-    #     - show_output (bool): 是否在终端直接显示命令的输出。默认为 False，即捕获输出。
-        
-    #     返回:
-    #     - str: 如果 show_output 为 False，则返回命令的标准输出。否则返回 None。
-        
-    #     异常:
-    #     - RuntimeError: 如果命令执行失败，抛出异常。
-    #     """
-    #     if show_output:
-    #         p = subprocess.Popen(cmd, shell=True, cwd=working_dir)
-    #     else:
-    #         p = subprocess.Popen(cmd, shell=True, stdout=subprocess.PIPE,
-    #                         stderr=subprocess.PIPE, encoding='utf-8', cwd=working_dir)
-    #     time_start = time.time()
-    #     try:
-    #         p.wait(timeout)
-    #     except subprocess.TimeoutExpired:
-    #         logging.warning('命令执行超时...')
-    #         p.kill()
-    #         raise
-    #     time_end = time.time()
-
-    #     if not show_output:
-    #         stdout, stderr = p.communicate()
-    #         return_code = p.returncode
-    #         if return_code != 0:
-    #             error_msg = f"""
-    #                 RETURN CODE : {return_code}
-    #                 COMMAND     : {cmd}
-    #                 RUN TIME    : {time_end - time_start}
-    #                 DETAIL      : {p.stderr.read()}
-    #             """
-    #             logging.warning('命令执行出错...')
-    #             logging.error(f'error_msg')
-    #             raise RuntimeError(error_msg)
-    #         return stdout.strip()
-        
+     
     def _ensure_ssl_certs(self):
         """
         确保 SSL 证书和密钥被正确配置。从配置文件获取路径，复制到正确的目录，
@@ -172,7 +127,7 @@ class TrojanServer():
         """
         self._remove_trojan_server()
         logging.info(f'开始建立trojan server镜像...')
-        cmd = f'docker build -f {self.docker_file} -t {self.image_name}:{self.image_tag} {self.content_path}'
+        cmd = f'echo {self.host_password} | sudo -S docker build -f {self.docker_file} -t {self.image_name}:{self.image_tag} {self.content_path}'
         self.run_cmd(cmd, timeout = None, working_dir=self.dockerfiles_path, show_output=True)
         logging.info(f'trojan server镜像建立完毕...')
     
@@ -183,7 +138,7 @@ class TrojanServer():
         """
         self._remove_trojan_server()
         logging.info(f'开始移除trojan server镜像...')
-        cmd = f'docker image rm {self.image_name}:{self.image_tag}'
+        cmd = f'echo {self.host_password} | sudo -S docker image rm {self.image_name}:{self.image_tag}'
         self.run_cmd(cmd, show_output=True)
         logging.info(f'trojan server镜像移除完毕...')
 
@@ -195,7 +150,7 @@ class TrojanServer():
         self._remove_trojan_server
         logging.info(f'开始启动trojan server容器...')
         map_port = self.config['nginx_config']['listen_port']
-        cmd = f'docker run -dit --privileged --init --net=bridge -p {map_port}:{map_port}\
+        cmd = f'echo {self.host_password} | sudo -S docker run -dit --privileged --init --net=bridge -p {map_port}:{map_port}\
                 -v /etc/localtime:/etc/localtime:ro -v /etc/timezone:/etc/timezone:ro \
                 --name={self.container_name} --hostname={self.container_host_name} \
                 {self.image_name}:{self.image_tag}'
@@ -208,7 +163,7 @@ class TrojanServer():
         使用 'docker rm -f' 命令来强制移除指定的容器，确保启动新容器前旧容器不会产生冲突。
         """
         logging.info(f'开始移除trojan server容器...')
-        cmd = f'docker rm -f {self.container_name}'
+        cmd = f'echo {self.host_password} | sudo -S docker rm -f {self.container_name}'
         self.run_cmd(cmd, show_output=True)
         logging.info(f'trojan server容器已移除...')
     
@@ -218,7 +173,7 @@ class TrojanServer():
         使用 'docker restart' 命令来重启指定的容器，使配置更改生效。
         """
         logging.info(f'重启trojan server容器...')
-        cmd = f'docker restart {self.container_name}'
+        cmd = f'echo {self.host_password} | sudo -S docker restart {self.container_name}'
         self.run_cmd(cmd, show_output=True)
         logging.info(f'trojan server容器重启完毕...')
     
@@ -230,7 +185,7 @@ class TrojanServer():
         """
         # 从容器中取出 server.json 
         server_json_path = f'{self.content_path}/server.json'
-        cmd1 = f'docker cp {self.container_name}:{self.server_config_file} {server_json_path}'
+        cmd1 = f'echo {self.host_password} | sudo -S docker cp {self.container_name}:{self.server_config_file} {server_json_path}'
         self.run_cmd(cmd1, show_output=True)
 
         # 读取 server.json 的默认配置
@@ -256,7 +211,7 @@ class TrojanServer():
             json.dump(server_config, file, indent=4)
         
         # 将 server.json放回容器中
-        cmd2 = f'docker cp {server_json_path} {self.container_name}:{self.server_config_file}'
+        cmd2 = f'echo {self.host_password} | sudo -S docker cp {server_json_path} {self.container_name}:{self.server_config_file}'
         self.run_cmd(cmd2, show_output=True)
         
         # 清理 server.json
