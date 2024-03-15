@@ -372,6 +372,8 @@ class DockerSetup():
 
         if not docker_installed:
             self._install_docker()
+        
+        self._ensure_user_in_docker_group()
 
     def _check_docker_installed(self):
         if shutil.which('docker') is None:
@@ -413,6 +415,28 @@ class DockerSetup():
 
         logging.info("Docker 安装完成")
     
+    def _ensure_user_in_docker_group(self):
+        """
+        检测当前用户是否在 docker 用户组中，如果不是，则自动将用户添加到该组。
+        """
+        logging.info(f"检查用户 {self.user} 是否在 docker 组中...")
+        
+        # 检查当前用户是否属于 docker 组
+        check_group_cmd = f'getent group docker | grep "\\b{self.user}\\b"'
+        result = self.run_cmd(check_group_cmd, show_output=False)
+        
+        # 如果用户不在 docker 组中，将其添加到该组
+        if not result:
+            logging.info(f"用户 {self.user} 不在 docker 组中，正在尝试添加...")
+            add_group_cmd = f'echo {self.password} | sudo -S usermod -aG docker {self.user}'
+            try:
+                self.run_cmd(add_group_cmd, show_output=True)
+                logging.info(f"用户 {self.user} 已成功添加到 docker 组。你可能需要重新登录或重启以使组变更生效。")
+            except RuntimeError as e:
+                logging.error(f"尝试将用户 {self.user} 添加到 docker 组时出现错误: {e}")
+        else:
+            logging.info(f"用户 {self.user} 已经是 docker 组的成员。")
+
     def auto_check_and_install_docker(self):
         try:
             if self.verify_password():
