@@ -186,7 +186,9 @@ class TrojanServer():
         # 从容器中取出 server.json 
         server_json_path = f'{self.content_path}/server.json'
         cmd1 = f'echo {self.host_password} | sudo -S docker cp {self.container_name}:{self.server_config_file} {server_json_path}'
+        cmd2 = f'echo {self.host_password} | sudo -S chmod +666 {server_json_path}'
         self.run_cmd(cmd1, show_output=True)
+        self.run_cmd(cmd2, show_output=True)
 
         # 读取 server.json 的默认配置
         server_config = self.load_config(server_json_path)
@@ -211,12 +213,12 @@ class TrojanServer():
             json.dump(server_config, file, indent=4)
         
         # 将 server.json放回容器中
-        cmd2 = f'echo {self.host_password} | sudo -S docker cp {server_json_path} {self.container_name}:{self.server_config_file}'
-        self.run_cmd(cmd2, show_output=True)
+        cmd3 = f'echo {self.host_password} | sudo -S docker cp {server_json_path} {self.container_name}:{self.server_config_file}'
+        self.run_cmd(cmd3, show_output=True)
         
         # 清理 server.json
-        cmd3 = f'rm {server_json_path}'
-        self.run_cmd(cmd3, show_output=True)
+        cmd4 = f'echo {self.host_password} | sudo -S rm {server_json_path}'
+        self.run_cmd(cmd4, show_output=True)
 
     def _update_nginx_config(self):
         """
