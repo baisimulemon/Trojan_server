@@ -1,4 +1,5 @@
 import logging
+import subprocess
 
 from cryptography import x509
 from cryptography.x509.oid import NameOID
@@ -112,3 +113,34 @@ class GeneratePrivateKey():
                 encryption_algorithm=serialization.NoEncryption()
             ))
         logging.info(f"证书生成于 {cert_path}，密钥生成于 {key_path}。")
+
+def run_cmd(cmd, timeout=20, working_dir=None, show_output=False, input=None):
+    """
+    执行指定的 shell 命令，并根据参数决定是否捕获或直接显示输出。
+    
+    参数:
+    - cmd (str): 要执行的命令。
+    - timeout (int): 命令执行的超时时间（秒）。默认为 20 秒。
+    - working_dir (str): 命令的工作目录。如果未指定，则使用当前目录。
+    - show_output (bool): 是否在终端直接显示命令的输出。默认为 False，即捕获输出。
+    - input (str): 如果提供，则传递到命令的标准输入。
+    
+    返回:
+    - str: 如果 show_output 为 False，则返回命令的标准输出。否则返回 None。
+    
+    异常:
+    - RuntimeError: 如果命令执行失败，抛出异常。
+    """
+    process = subprocess.Popen(cmd, shell=True, cwd=working_dir, 
+                               stdin=subprocess.PIPE, stdout=subprocess.PIPE, 
+                               stderr=subprocess.PIPE, encoding='utf-8')
+    try:
+        stdout, stderr = process.communicate(input=input, timeout=timeout)
+    except subprocess.TimeoutExpired:
+        process.kill()
+        raise RuntimeError("命令执行超时")
+
+    if process.returncode != 0:
+        raise RuntimeError(stderr.strip() or "命令执行出错，但没有提供错误输出。")
+
+    return stdout.strip() if not show_output else None
