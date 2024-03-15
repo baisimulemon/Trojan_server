@@ -1,7 +1,6 @@
 import os
 import re
 import glob
-import time
 import json
 import shutil
 import subprocess
@@ -394,23 +393,23 @@ class DockerSetup():
     def _install_docker(self):
         logging.info("安装依赖: apt-transport-https、ca-certificates、curl、gnupg2、software-properties-common")
         dependencies = 'apt-transport-https ca-certificates curl gnupg2 software-properties-common'
-        self.run_cmd(f'echo {self.password} | sudo -S apt-get install -y {dependencies}', show_output=True)
+        self.run_cmd(f'echo {self.password} | sudo -S apt-get install -y {dependencies}', show_output=True, timeout=None)
 
         logging.info("配置信任Docker的GPG公钥")
-        self.run_cmd(f'echo {self.password} | sudo -S curl -fsSL https://download.docker.com/linux/ubuntu/gpg | sudo apt-key add -', show_output=True)
+        self.run_cmd(f'echo {self.password} | sudo -S curl -fsSL https://download.docker.com/linux/ubuntu/gpg | sudo apt-key add -', show_output=True, timeout=60)
 
         logging.info("增加Docker官方APT源")
         add_apt_repository_command = (
             f"echo {self.password} | sudo -S add-apt-repository "
             f"\"deb [arch=amd64] https://download.docker.com/linux/ubuntu $(lsb_release -cs) stable\""
         )
-        self.run_cmd(add_apt_repository_command, show_output=True)
+        self.run_cmd(add_apt_repository_command, show_output=True, timeout=60)
 
         logging.info("更新APT包索引")
-        self.run_cmd(f'echo {self.password} | sudo -S apt-get update -y', show_output=True)
+        self.run_cmd(f'echo {self.password} | sudo -S apt-get update -y', show_output=True, timeout=None)
 
         logging.info("安装 docker-ce")
-        self.run_cmd(f'echo {self.password} | sudo -S apt-get install -y docker-ce', show_output=True)
+        self.run_cmd(f'echo {self.password} | sudo -S apt-get install -y docker-ce', show_output=True, timeout=None)
 
         logging.info("Docker 安装完成")
     
